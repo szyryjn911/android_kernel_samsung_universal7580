@@ -267,24 +267,6 @@ static void sem_rcu_free(struct rcu_head *head)
  * Caller must own sem_perm.lock.
  * New simple ops cannot start, because simple ops first check
  * that sem_perm.lock is free.
- */
-static void sem_wait_array(struct sem_array *sma)
-{
-	int i;
-	struct sem *sem;
-
-	for (i = 0; i < sma->sem_nsems; i++) {
-		sem = sma->sem_base + i;
-		spin_unlock_wait(&sem->lock);
-	}
-	ipc_smp_acquire__after_spin_is_unlocked();
-}
-
-/*
- * Wait until all currently ongoing simple ops have completed.
- * Caller must own sem_perm.lock.
- * New simple ops cannot start, because simple ops first check
- * that sem_perm.lock is free.
  * that a) sem_perm.lock is free and b) complex_count is 0.
  */
 static void sem_wait_array(struct sem_array *sma)
@@ -303,15 +285,7 @@ static void sem_wait_array(struct sem_array *sma)
 		sem = sma->sem_base + i;
 		spin_unlock_wait(&sem->lock);
 	}
-}
-
-static void sem_rcu_free(struct rcu_head *head)
-{
-	struct ipc_rcu *p = container_of(head, struct ipc_rcu, rcu);
-	struct sem_array *sma = ipc_rcu_to_struct(p);
-
-	security_sem_free(sma);
-	ipc_rcu_free(head);
+	ipc_smp_acquire__after_spin_is_unlocked();
 }
 
 /*
@@ -1315,8 +1289,8 @@ static int semctl_setval(struct ipc_namespace *ns, int semid, int semnum,
 	if (err) {
 		rcu_read_unlock();
 		return -EACCES;
-	}
-
+}
+	
 	sem_lock(sma, NULL, -1);
 
 	if (sma->sem_perm.deleted) {
